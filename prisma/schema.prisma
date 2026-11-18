@@ -1,0 +1,300 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ── RBAC (simplified from Atlas) ─────────────────────────────────────
+
+enum UserStatus {
+  Active
+  Inactive
+}
+
+model User {
+  id        String     @id @default(cuid())
+  username  String     @unique
+  fullName  String
+  email     String     @unique
+  status    UserStatus @default(Active)
+  isDeleted Boolean    @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  userRoles UserRole[]
+
+  @@map("users")
+}
+
+model Role {
+  id              String           @id @default(cuid())
+  name            String           @unique
+  description     String?
+  createdAt       DateTime         @default(now())
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id              String           @id @default(cuid())
+  module          String
+  action          String
+  description     String?
+  rolePermissions RolePermission[]
+
+  @@unique([module, action])
+  @@map("permissions")
+}
+
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ── Meta Ads ─────────────────────────────────────────────────────────
+
+model MetaAdAccount {
+  id          String   @id @default(cuid())
+  accountId   String   @unique
+  name        String
+  accessToken String
+  currency    String   @default("PKR")
+  timezone    String   @default("Asia/Karachi")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaigns MetaCampaign[]
+  metrics   MetaDailyMetric[]
+
+  @@map("meta_ad_accounts")
+}
+
+model MetaCampaign {
+  id              String   @id @default(cuid())
+  metaCampaignId  String   @unique
+  accountId       String
+  name            String
+  status          String
+  effectiveStatus String
+  objective       String?
+  bidStrategy     String?
+  dailyBudget     Float?
+  lifetimeBudget  Float?
+  startTime       DateTime?
+  stopTime        DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  account MetaAdAccount @relation(fields: [accountId], references: [id])
+  adSets  MetaAdSet[]
+  metrics MetaDailyMetric[]
+
+  @@index([status])
+  @@index([effectiveStatus])
+  @@map("meta_campaigns")
+}
+
+model MetaAdSet {
+  id                String   @id @default(cuid())
+  metaAdSetId       String   @unique
+  campaignId        String
+  name              String
+  status            String
+  effectiveStatus   String
+  dailyBudget       Float?
+  optimizationGoal  String?
+  targetingJson     Json?
+  startTime         DateTime?
+  stopTime          DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  campaign MetaCampaign @relation(fields: [campaignId], references: [id])
+  ads      MetaAd[]
+  metrics  MetaDailyMetric[]
+
+  @@index([status])
+  @@index([effectiveStatus])
+  @@map("meta_ad_sets")
+}
+
+model MetaAd {
+  id              String   @id @default(cuid())
+  metaAdId        String   @unique
+  adSetId         String
+  creativeId      String?
+  name            String
+  status          String
+  effectiveStatus String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  adSet    MetaAdSet      @relation(fields: [adSetId], references: [id])
+  creative MetaCreative?  @relation(fields: [creativeId], references: [id])
+  metrics  MetaDailyMetric[]
+
+  @@index([status])
+  @@index([effectiveStatus])
+  @@map("meta_ads")
+}
+
+model MetaCreative {
+  id               String   @id @default(cuid())
+  metaCreativeId   String   @unique
+  name             String?
+  title            String?
+  body             String?
+  imageUrl         String?
+  videoId          String?
+  thumbnailUrl     String?
+  videoUrl         String?
+  assetFeedSpec    Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  ads  MetaAd[]
+  tags MetaCreativeTag[]
+
+  @@map("meta_creatives")
+}
+
+model MetaCreativeTag {
+  id         String @id @default(cuid())
+  creativeId String
+  tag        String
+
+  creative MetaCreative @relation(fields: [creativeId], references: [id])
+
+  @@unique([creativeId, tag])
+  @@index([tag])
+  @@map("meta_creative_tags")
+}
+
+// ── Daily Metrics ────────────────────────────────────────────────────
+
+model MetaDailyMetric {
+  id               String   @id @default(cuid())
+  date             DateTime @db.Date
+  accountId        String
+  campaignId       String
+  adSetId          String
+  adId             String
+  spend            Float    @default(0)
+  impressions      Int      @default(0)
+  reach            Int      @default(0)
+  clicks           Int      @default(0)
+  ctr              Float    @default(0)
+  cpc              Float    @default(0)
+  cpm              Float    @default(0)
+  purchases        Int      @default(0)
+  purchaseValue    Float    @default(0)
+  metaRoas         Float    @default(0)
+  addToCart        Int      @default(0)
+  initiateCheckout Int      @default(0)
+  leads            Int      @default(0)
+  actionsJson      Json?
+
+  account  MetaAdAccount @relation(fields: [accountId], references: [id])
+  campaign MetaCampaign  @relation(fields: [campaignId], references: [id])
+  adSet    MetaAdSet     @relation(fields: [adSetId], references: [id])
+  ad       MetaAd        @relation(fields: [adId], references: [id])
+
+  @@unique([date, adId])
+  @@index([date])
+  @@index([accountId, date])
+  @@index([campaignId, date])
+  @@index([adSetId, date])
+  @@index([adId, date])
+  @@map("meta_daily_metrics")
+}
+
+// ── Shopify Orders ───────────────────────────────────────────────────
+
+model ShopifyConnection {
+  id          String   @id @default(cuid())
+  storeDomain String   @unique
+  accessToken String
+  shopName    String?
+  currency    String   @default("PKR")
+  isActive    Boolean  @default(true)
+  lastSyncAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders ShopifyOrder[]
+
+  @@map("shopify_connections")
+}
+
+model ShopifyOrder {
+  id                String   @id @default(cuid())
+  shopifyOrderId    String   @unique
+  connectionId      String
+  orderNumber       String
+  totalPrice        Float
+  subtotalPrice     Float
+  totalDiscounts    Float    @default(0)
+  totalRefunded     Float    @default(0)
+  currency          String   @default("PKR")
+  financialStatus   String
+  fulfillmentStatus String?
+  orderDate         DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  connection ShopifyConnection @relation(fields: [connectionId], references: [id])
+
+  @@index([orderDate])
+  @@index([connectionId, orderDate])
+  @@index([financialStatus])
+  @@map("shopify_orders")
+}
+
+// ── Sync Tracking ────────────────────────────────────────────────────
+
+enum SyncSource {
+  META
+  SHOPIFY
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model SyncRun {
+  id         String     @id @default(cuid())
+  source     SyncSource
+  status     SyncStatus @default(RUNNING)
+  startedAt  DateTime   @default(now())
+  finishedAt DateTime?
+  itemCount  Int        @default(0)
+  error      String?
+
+  @@index([source, startedAt])
+  @@map("sync_runs")
+}
